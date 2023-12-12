@@ -8,13 +8,20 @@ from serial import Serial
 from pymongo import MongoClient
 import database
 
+from threading import Thread
+
+# **************** global variables ************
+
 # global resident list (need to be seen by add and edit resident classes)
 resident_list = []
 
-# serial config
-'''serial = Serial("COM5", baudrate=9600)
-t = "ler\n"
-'''
+# get_rfid class must be seen by the thread
+global get_rfid
+
+# manage_residents class must be seen by the thread
+global manage_residents
+
+# **********************************************
 
 # connecting to db
 connection_str = database.get_string()
@@ -37,13 +44,28 @@ for document in cursor:
            
     resident_list.append(new_dict)
    
+# serial config 
+serial = Serial("COM5", baudrate=9600)
 
-# this reads the tag id and prints it
-'''while True:
-    serial.write(t.encode("UTF-8"))
-    txt = serial.readline().decode().strip()
-    if txt.startswith("In hex:"):
-        print(txt[8:].strip())'''
+def thread_serial():
+            # this reads the tag id and prints it
+            while True:
+                txt = serial.readline().decode().strip()
+                if txt.startswith("In hex:"):
+                    print(txt[8:].strip())
+                   
+                    global manage_residents
+                    if manage_residents:
+                        manage_residents.tag.set(txt[8:].strip())
+
+                    global get_rfid
+                    if get_rfid:
+                        get_rfid.destroy()
+
+# star thread that keep reading rfid from serial
+thread = Thread(target=thread_serial)
+thread.daemon = True
+thread.start()
 
 # main class
 class MainWin(tk.Tk):
@@ -70,11 +92,11 @@ class MainWin(tk.Tk):
         self.label.pack(ipadx=10, ipady=30)
 
         def add_handler():
+            global manage_residents
             manage_residents = ManageResidentWin(type="add",parent_class=self)
             
-
         # add resident button
-        self.add_bt = ttk.Button(self,text="Adicionar Morador", comman=add_handler)
+        self.add_bt = ttk.Button(self,text="Adicionar Morador", command=add_handler)
         self.add_bt.place(x=670,y=90,width=140,height=40)
         
         # define list columns
@@ -172,9 +194,8 @@ class ManageResidentWin(tk.Toplevel):
         l_name_label.place(x=10,y=100)
         tag_label = ttk.Label(self,text="Tag")
         tag_label.place(x=10,y=190)
-
         password_label = ttk.Label(self,text="Senha")
-        password_label.place(x=10,y=280)
+        password_label.place(x=10,y=330)
 
         # entries
         f_name_entry = ttk.Entry(self, textvariable=self.f_name)
@@ -182,10 +203,17 @@ class ManageResidentWin(tk.Toplevel):
         f_name_entry.focus()
         l_name_entry = ttk.Entry(self, textvariable=self.l_name)
         l_name_entry.place(x=10,y=130,width=400)
-        tag_entry = ttk.Entry(self, textvariable=self.tag)
+        tag_entry = ttk.Entry(self, textvariable=self.tag, state='readonly')
         tag_entry.place(x=10,y=220,width=400)
         password_entry = ttk.Entry(self,textvariable=self.password)
-        password_entry.place(x=10,y=310,width=400)
+        password_entry.place(x=10,y=370,width=400)
+
+        def rfid_handler():
+            global get_rfid 
+            get_rfid = GetRFIDwin()
+
+        self.get_rfid_bt = ttk.Button(self,text="Ler RFID", command=rfid_handler)
+        self.get_rfid_bt.place(x=10,y=260,width=110,height=40)
 
         if type == "add":
             self.add_window()
@@ -228,6 +256,39 @@ class ManageResidentWin(tk.Toplevel):
         submit_bt = ttk.Button(self, text="Editar", command=self.edit_handler)
         submit_bt.place(x=200, y=430, width=140, height=40)
     
+
+class GetRFIDwin(tk.Toplevel):
+    def __init__(self):
+        super().__init__()
+
+        self.title("RFID")
+
+        window_width = 300
+        window_height = 120
+        
+        # get the screen dimension
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        
+        # find the center point (+ offset)
+        center_x = int((screen_width/2 - window_width / 2)-15)  
+        center_y = int((screen_height/2 - window_height / 2)+20)
+        
+        self.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
+
+        label = ttk.Label(self, text="Enviando comando para ler RFID...")
+        label.place(x=20, y=15)
+
+        prog_bar = ttk.Progressbar(self, orient='horizontal', mode='indeterminate', length=250)
+        prog_bar.place(x=20,y=50)
+        prog_bar.start()
+
+        # sending read cmd
+        t = "ler\n"
+        serial.write(t.encode("UTF-8"))
+
+        label.config(text="Aguardando RFID...")
+
 
 
 # remove blur in windows. try catch for portability between platforms
