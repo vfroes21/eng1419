@@ -3,9 +3,47 @@ from tkinter import ttk
 from tkinter import *
 from tkinter.messagebox import showinfo
 
+from serial import Serial
+
+from pymongo import MongoClient
+import database
+
 # global resident list (need to be seen by add and edit resident classes)
 resident_list = []
-resident_list.append(('Victor','Froes','0001','209865'))    # test resident
+
+# serial config
+'''serial = Serial("COM5", baudrate=9600)
+t = "ler\n"
+'''
+
+# connecting to db
+connection_str = database.get_string()
+client = MongoClient(connection_str)
+
+db = client["moradores"]
+collection = db["casa1"]
+
+cursor = collection.find()
+
+#doc = {"First Name":"Jan", "Last Name": "Krueger", "Tag ID": "0002", "Password":"202265"}
+#collection.insert_one(doc)
+
+# retrieving all info but id from the db entry
+for document in cursor:
+    new_dict = {}
+    for key, value in document.items():
+        if key != "_id":
+            new_dict[key] = value
+           
+    resident_list.append(new_dict)
+   
+
+# this reads the tag id and prints it
+'''while True:
+    serial.write(t.encode("UTF-8"))
+    txt = serial.readline().decode().strip()
+    if txt.startswith("In hex:"):
+        print(txt[8:].strip())'''
 
 # main class
 class MainWin(tk.Tk):
@@ -36,7 +74,7 @@ class MainWin(tk.Tk):
             
 
         # add resident button
-        self.add_bt = ttk.Button(self,text="Adicionar Morador", command=add_handler)
+        self.add_bt = ttk.Button(self,text="Adicionar Morador", comman=add_handler)
         self.add_bt.place(x=670,y=90,width=140,height=40)
         
         # define list columns
@@ -52,7 +90,8 @@ class MainWin(tk.Tk):
 
         # add data to the treeview
         for resident in resident_list:
-            self.tree.insert('', tk.END, values=resident)
+            t = tuple(resident.values())
+            self.tree.insert('', tk.END, values=t)
 
         def show_context_menu(event):
             item = self.tree.identify_row(event.y)  # get item under cursor
@@ -99,7 +138,6 @@ class MainWin(tk.Tk):
             self.tree.insert('', tk.END, values=resident)
 
         
-
 
 class ManageResidentWin(tk.Toplevel):
     def __init__(self,type,parent_class,resident=None):
