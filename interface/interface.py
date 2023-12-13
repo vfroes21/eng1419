@@ -13,6 +13,7 @@ from threading import Thread
 # **************** global variables ************
 
 # global resident list (need to be seen by add and edit resident classes)
+global resident_list
 resident_list = []
 
 # get_rfid class must be seen by the thread
@@ -30,20 +31,25 @@ client = MongoClient(connection_str)
 db = client["moradores"]
 collection = db["casa1"]
 
-cursor = collection.find()
-
 #doc = {"First Name":"Jan", "Last Name": "Krueger", "Tag ID": "0002", "Password":"202265"}
 #collection.insert_one(doc)
 
-# retrieving all info but id from the db entry
-for document in cursor:
-    new_dict = {}
-    for key, value in document.items():
-        if key != "_id":
-            new_dict[key] = value
-           
-    resident_list.append(new_dict)
-   
+
+# retrieving all info but id from db entries
+def insert_db_entry_into_list():
+    cursor = collection.find()
+    global resident_list
+    resident_list = []
+    for document in cursor:
+        new_dict = {}
+        for key, value in document.items():
+            if key != "_id":
+                new_dict[key] = value
+
+        resident_list.append(new_dict)
+
+insert_db_entry_into_list()
+
 # serial config 
 serial = Serial("COM5", baudrate=9600)
 
@@ -125,13 +131,26 @@ class MainWin(tk.Tk):
 
         def delete_item():
             selected_item = self.tree.selection()[0]
-            if selected_item:
-                self.tree.delete(selected_item)
+            values = self.tree.item(selected_item, 'values')   # get data from user being clicked
+          
+            if values:
+                # find resident on db 
+                busca = {"First Name":values[0]}
+       
+                collection.delete_one(busca)
+            
+                insert_db_entry_into_list()
+
+                self.update_tree()
+                self.tree.update_idletasks()     # refresh treeview
+            else:
+                showinfo(title="Erro",message="Tried to delete resident but no resident was received")
+           
 
         def edit_item():
             selected_item = self.tree.selection()[0]
             values = self.tree.item(selected_item, 'values')   # get data from user being clicked
-            
+              
             if values:
                 manage_win = ManageResidentWin(type="edit",parent_class=self,resident=(selected_item,values))
 
@@ -157,7 +176,8 @@ class MainWin(tk.Tk):
         for item in self.tree.get_children():
             self.tree.delete(item)
         for resident in resident_list:
-            self.tree.insert('', tk.END, values=resident)
+            t = tuple(resident.values())
+            self.tree.insert('', tk.END, values=t)
 
         
 
@@ -166,10 +186,11 @@ class ManageResidentWin(tk.Toplevel):
         super().__init__()
 
         self.parent_class = parent_class
+        self.resident = resident
 
         window_width = 500
         window_height = 500
-        
+      
         # get the screen dimension
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
@@ -220,25 +241,50 @@ class ManageResidentWin(tk.Toplevel):
         
         elif type == "edit":
             if resident:
-                self.resident = resident
                 self.edit_window(self.resident)
             else:
                 showinfo(title="Erro", message="SOMETHING WRONG, INVALID RESIDENT DATA")
 
 
-    def add_handler(self):
-        resident_list.append((f'{self.f_name.get()}',f'{self.l_name.get()}',f'{self.tag.get()}',f'{self.password.get()}'))
-        self.destroy()  # Close the Toplevel window
+    def add_handler(self):     
+        # creating data and sending to db
+        d = {}
+        d["First Name"] = f'{self.f_name.get()}'
+        d["Last Name"] = f'{self.l_name.get()}'
+        d["Tag ID"] = f'{self.tag.get()}'
+        d["Password"] = f'{self.password.get()}'
+
+        collection.insert_one(d)
+
+        insert_db_entry_into_list()
+    
+        self.destroy()  
         self.parent_class.update_tree()
 
     def edit_handler(self):
-        self.parent_class.tree.set(self.resident[0], 'f_name', value=self.f_name.get())
-        self.parent_class.tree.set(self.resident[0], 'l_name', value=self.l_name.get())
-        self.parent_class.tree.set(self.resident[0], 'tag_id', value=self.tag.get())
-        self.parent_class.tree.set(self.resident[0], 'password', value=self.password.get())
 
-        self.destroy()
-        self.parent_class.tree.update_idletasks()     # refresh treeview
+        # updating given entry
+        if self.resident:
+            # find resident on db (before edited)
+            busca = {"First Name":self.resident[1][0]}
+            # udpate all fields
+            update_operation = {
+                "$set": {
+                    "First Name": self.f_name.get(),
+                    "Last Name": self.l_name.get(),
+                    "Tag ID": self.tag.get(),
+                    "Password": self.password.get()
+                }
+            }
+            collection.update_one(busca, update_operation)
+
+            insert_db_entry_into_list()
+
+            self.destroy()
+            self.parent_class.update_tree()
+            self.parent_class.tree.update_idletasks()     # refresh treeview
+        else:
+            showinfo(title="Erro",message="Tried to update resident but no resident was received")
 
     def add_window(self):
         self.title("Adicionar Moradores")
@@ -246,6 +292,7 @@ class ManageResidentWin(tk.Toplevel):
         submit_bt.place(x=200, y=430, width=140, height=40)
     
     def edit_window(self,resident):
+        # pre fill input fields
         self.f_name.set(resident[1][0])
         self.l_name.set(resident[1][1])
         self.tag.set(resident[1][2])
