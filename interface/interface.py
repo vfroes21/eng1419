@@ -10,6 +10,11 @@ import database
 
 from threading import Thread
 
+import cv2
+from PIL import Image,ImageTk
+import os
+
+
 # **************** global variables ************
 
 # global resident list (need to be seen by add and edit resident classes)
@@ -30,9 +35,6 @@ client = MongoClient(connection_str)
 
 db = client["moradores"]
 collection = db["casa1"]
-
-#doc = {"First Name":"Jan", "Last Name": "Krueger", "Tag ID": "0002", "Password":"202265"}
-#collection.insert_one(doc)
 
 
 # retrieving all info but id from db entries
@@ -189,7 +191,7 @@ class ManageResidentWin(tk.Toplevel):
         self.resident = resident
 
         window_width = 500
-        window_height = 500
+        window_height = 650
       
         # get the screen dimension
         screen_width = self.winfo_screenwidth()
@@ -207,7 +209,8 @@ class ManageResidentWin(tk.Toplevel):
         self.l_name = tk.StringVar()
         self.tag = tk.StringVar()
         self.password = tk.StringVar()
-        
+        self.photo = tk.StringVar()
+
         # labels
         f_name_label = ttk.Label(self, text="Nome")
         f_name_label.place(x=10, y=10)
@@ -216,7 +219,9 @@ class ManageResidentWin(tk.Toplevel):
         tag_label = ttk.Label(self,text="Tag")
         tag_label.place(x=10,y=190)
         password_label = ttk.Label(self,text="Senha")
-        password_label.place(x=10,y=330)
+        password_label.place(x=10,y=480)
+        photo_label = ttk.Label(self, text="Foto")
+        photo_label.place(x=10, y=330)
 
         # entries
         f_name_entry = ttk.Entry(self, textvariable=self.f_name)
@@ -227,14 +232,22 @@ class ManageResidentWin(tk.Toplevel):
         tag_entry = ttk.Entry(self, textvariable=self.tag, state='readonly')
         tag_entry.place(x=10,y=220,width=400)
         password_entry = ttk.Entry(self,textvariable=self.password)
-        password_entry.place(x=10,y=370,width=400)
+        password_entry.place(x=10,y=510,width=400)
+        photo_entry = ttk.Entry(self, textvariable=self.photo, state='readonly')
+        photo_entry.place(x=10,y=360,width=400)
 
         def rfid_handler():
             global get_rfid 
             get_rfid = GetRFIDwin()
 
+        def photo_handler():
+            get_photo = GetPhotoWin(self)
+
         self.get_rfid_bt = ttk.Button(self,text="Ler RFID", command=rfid_handler)
         self.get_rfid_bt.place(x=10,y=260,width=110,height=40)
+
+        self.get_photo_bt = ttk.Button(self,text="Capturar",command=photo_handler)
+        self.get_photo_bt.place(x=10, y=400,width=110,height=40)
 
         if type == "add":
             self.add_window()
@@ -248,10 +261,17 @@ class ManageResidentWin(tk.Toplevel):
 
     def add_handler(self):     
         # creating data and sending to db
+        if self.photo.get() == "" and self.tag.get() == "":
+            current_grab = self.grab_current()
+           
+            showinfo(title="Aviso",message="Para cadastrar um morador é necessário cadastrar um RFID ou foto")
+            return
+
         d = {}
         d["First Name"] = f'{self.f_name.get()}'
         d["Last Name"] = f'{self.l_name.get()}'
         d["Tag ID"] = f'{self.tag.get()}'
+        d["Picture File"] = f'{self.photo.get()}'
         d["Password"] = f'{self.password.get()}'
 
         collection.insert_one(d)
@@ -273,6 +293,7 @@ class ManageResidentWin(tk.Toplevel):
                     "First Name": self.f_name.get(),
                     "Last Name": self.l_name.get(),
                     "Tag ID": self.tag.get(),
+                    "Picture File": self.photo.get(),
                     "Password": self.password.get()
                 }
             }
@@ -289,14 +310,15 @@ class ManageResidentWin(tk.Toplevel):
     def add_window(self):
         self.title("Adicionar Moradores")
         submit_bt = ttk.Button(self, text="Adicionar", command=self.add_handler)
-        submit_bt.place(x=200, y=430, width=140, height=40)
+        submit_bt.place(x=200, y=580, width=140, height=40)
     
     def edit_window(self,resident):
         # pre fill input fields
         self.f_name.set(resident[1][0])
         self.l_name.set(resident[1][1])
         self.tag.set(resident[1][2])
-        self.password.set(resident[1][3])
+        self.photo.set(resident[1][3])
+        self.password.set(resident[1][4])
 
         self.title("Editar Moradores")
 
@@ -336,6 +358,59 @@ class GetRFIDwin(tk.Toplevel):
 
         label.config(text="Aguardando RFID...")
 
+
+class GetPhotoWin(tk.Toplevel):
+    def __init__(self,parent_class):
+        super().__init__()
+
+        self.title("Webcam")
+
+        self.video_capture = cv2.VideoCapture(0) 
+        self.current_image = None
+
+        self.canvas = tk.Canvas(self, width=640,height=480)
+        self.canvas.pack()
+
+        self.parent_class = parent_class
+        print(self.parent_class.f_name.get())
+
+        def save_img():
+            if self.current_image is not None:
+                current_directory = os.path.dirname(os.path.abspath(__file__))
+
+                if self.parent_class.f_name.get() != "" or self.parent_class.l_name.get() != "":
+                    aux = 'faces/' + self.parent_class.f_name.get() + '_' + self.parent_class.l_name.get() + '.jpg'
+                    s = aux.replace(' ','_')
+                    path = os.path.join(s)
+
+                    self.parent_class.photo.set(s[6:])
+                else:
+                    path = os.path.join(current_directory, 'faces/newuser.jpg')
+
+                    self.parent_class.photo.set("newuser.jpg")
+                
+
+                self.current_image.save(path)
+
+                self.destroy()
+
+
+        self.download_bt = ttk.Button(self, text="Capturar", command=save_img)
+        self.download_bt.pack()
+
+        self.update_webcam()
+
+    def update_webcam(self):
+        ret,frame = self.video_capture.read()
+
+        if ret:
+            self.current_image = Image.fromarray(cv2.cvtColor(frame,cv2.COLOR_BGR2RGB))       
+
+            self.photo = ImageTk.PhotoImage(image=self.current_image)
+            self.canvas.create_image(0,0,image=self.photo,anchor=tk.NW)
+            self.after(15,self.update_webcam) 
+
+   
 
 
 # remove blur in windows. try catch for portability between platforms
