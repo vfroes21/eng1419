@@ -120,7 +120,10 @@ class MainWin(tk.Tk):
 
         # add data to the treeview
         for resident in resident_list:
-            t = tuple(resident.values())
+            # excluding picture file key for displaying in tree list
+            new_dict = {key: value for key, value in resident.items() if key != "Picture File"}
+            
+            t = tuple(new_dict.values())
             self.tree.insert('', tk.END, values=t)
 
         def show_context_menu(event):
@@ -178,7 +181,10 @@ class MainWin(tk.Tk):
         for item in self.tree.get_children():
             self.tree.delete(item)
         for resident in resident_list:
-            t = tuple(resident.values())
+            # excluding picture file key for displaying in tree list
+            new_dict = {key: value for key, value in resident.items() if key != "Picture File"}
+            
+            t = tuple(new_dict.values())
             self.tree.insert('', tk.END, values=t)
 
         
@@ -323,7 +329,7 @@ class ManageResidentWin(tk.Toplevel):
         self.title("Editar Moradores")
 
         submit_bt = ttk.Button(self, text="Editar", command=self.edit_handler)
-        submit_bt.place(x=200, y=430, width=140, height=40)
+        submit_bt.place(x=200, y=580, width=140, height=40)
     
 
 class GetRFIDwin(tk.Toplevel):
@@ -372,7 +378,6 @@ class GetPhotoWin(tk.Toplevel):
         self.canvas.pack()
 
         self.parent_class = parent_class
-        print(self.parent_class.f_name.get())
 
         def save_img():
             if self.current_image is not None:
